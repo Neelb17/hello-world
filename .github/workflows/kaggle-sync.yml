@@ -1,0 +1,46 @@
+name: Sync Kaggle Notebooks
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # Run every day at midnight UTC
+  workflow_dispatch:      # Allow manual runs
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install Kaggle API
+      run: |
+        sudo apt-get update
+        sudo apt-get install python3-pip -y
+        pip3 install kaggle
+
+    - name: Set up Kaggle credentials
+      run: |
+        mkdir -p ~/.kaggle
+        echo "{\"username\":\"${{ secrets.KAGGLE_USERNAME }}\",\"key\":\"${{ secrets.KAGGLE_KEY }}\"}" > ~/.kaggle/kaggle.json
+        chmod 600 ~/.kaggle/kaggle.json
+
+    - name: Get list of your Kaggle kernels
+      run: |
+        kaggle kernels list --mine --csv > kernel_list.csv
+
+    - name: Download all Kaggle notebooks
+      run: |
+        mkdir -p kaggle_notebooks
+        tail -n +2 kernel_list.csv | cut -d, -f1 | while read kernel; do
+          echo "Downloading $kernel..."
+          kaggle kernels pull "$kernel" -p "kaggle_notebooks/${kernel////_}"
+        done
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add kaggle_notebooks/*
+        git commit -m "Auto-sync Kaggle notebooks" || echo "No changes to commit"
+        git push
